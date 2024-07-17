@@ -1,5 +1,3 @@
-import reactLogo from '../assets/react.svg'
-import viteLogo from '/vite.svg'
 import {createGameApi, getGameApi} from './chessApiRequests.ts'
 import './App.css'
 import Board from './Board.tsx'
@@ -19,8 +17,8 @@ function App() {
   }
 
   useEffect(() => {
-      // don't need to reload game on every render
-      getGameApi(12)
+      // don't need to reload game on every render. is it?
+      getGameApi(34)
           .then((res) => {
               console.log(res)
               setGame(res)
@@ -42,14 +40,6 @@ function App() {
       <>
           <h1>Chess Engine</h1>
           {game && <Board board={game} /> }
-          <div>
-              <a href="https://vitejs.dev" target="_blank">
-                  <img src={viteLogo} className="logo" alt="Vite logo"/>
-              </a>
-              <a href="https://react.dev" target="_blank">
-                  <img src={reactLogo} className="logo react" alt="React logo"/>
-              </a>
-          </div>
           <div className="card">
               <button onClick={createGame}>
                   Create Game

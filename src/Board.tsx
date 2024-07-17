@@ -1,7 +1,23 @@
-import {useEffect, useState } from 'react'
+import {useEffect, useState, useMemo } from 'react'
 import { getImageMap } from "./utils.ts";
 import './Board.css'
+import {makeMoveApi} from "./chessApiRequests.ts";
 
+type Square = {
+    value: number,
+    redraw: boolean
+}
+
+type PieceMoving = {
+    value: number,
+    originalPos?: {
+        rank: number,
+        file: number
+    }
+}
+
+const BLACK = '#2e7d32'
+const WHITE = '#fff9c4'
 
 const drawImage = (ctx: CanvasRenderingContext2D, url: string, x: number, y: number) => {
     const img = new Image();
@@ -13,106 +29,185 @@ const drawImage = (ctx: CanvasRenderingContext2D, url: string, x: number, y: num
 
 }
 
-const drawPieces = (ctx?: CanvasRenderingContext2D, pieces) => {
-    console.log('drawing pieces')
+// should pieces be an object instead of number? redraw: bool
+const drawPieces = (pieces: Square[][], ctx?: CanvasRenderingContext2D, drawAll?: boolean) => {
+    if (!ctx || !pieces) return
+
+    // pass array of pairs, for pieces that need redrawn
     const imageMap = getImageMap()
 
     // Synchronously draws images for each piece on the board
     for (let rank = 0; rank < 8; rank++) {
         for (let file = 0; file < 8; file++) {
-            if (pieces[rank][file] !== 0) {
-                drawImage(ctx, imageMap.get(pieces[rank][file]), 125 * file, 125 * rank)
+            if (pieces[rank][file].value !== 0 && (drawAll || pieces[rank][file].redraw)) {
+                // HOW did the others go away??
+                drawImage(ctx, imageMap.get(pieces[rank][file].value), 125 * file, 125 * rank)
             }
         }
     }
 }
 
-// TODO fix type
-// @ts-ignore
-const Board = ({ board }) => {
-    const [pieceMoving, setPieceMoving] = useState({
-        value: 0,
-        originalPos: null
-    })
-    const [pieces, setPieces] = useState(board.board)
-    const [drawContext, setDrawContext] = useState(null)
-    // dont 'have a context here
-    // only run when deps have changed
-    useEffect(() => {
-        if (!drawContext) return
-        drawBoard(drawContext)
-        drawPieces(drawContext, pieces)
-    }, [pieces])
+// given indices, draw correct square
+const drawSquare = (ctx: CanvasRenderingContext2D | null, rank: number, file: number) => {
+    if (!ctx) return
 
-    // TODO mouse handlers inside canvas. onclick of square, not image
-    // TODO have legalMoves for position, filter based on selected piece
-    // TODO can we do drag and drop? onmousedown
+    ctx.fillStyle = ((rank + file) % 2 === 0) ? WHITE : BLACK
+    ctx.fillRect(125 * file, 125 * rank, 125, 125)
+}
 
-    const drawBoard = (ctx: CanvasRenderingContext2D) => {
-        const black = '#2e7d32'
-        const white = '#fff9c4'
-        let curStyle = white
+const drawBoard = (ctx?: CanvasRenderingContext2D) => {
+    if (!ctx) return
 
-        ctx.fillStyle = white
+    let curStyle = WHITE
 
-        ctx.fillRect(0, 0, 125, 125)
+    ctx.fillStyle = WHITE
 
-        let x = 0
-        let y = 0
+    let x = 0
+    let y = 0
 
-        for (let rank = 0; rank < 8; rank++) {
-            for (let file = 0; file < 8; file++) {
-                ctx.fillRect(x, y, 125, 125)
-                if (file !== 7) {
-                    ctx.fillStyle = curStyle === white ? black : white
-                    curStyle = ctx.fillStyle
-                }
-                x += 125
+    for (let rank = 0; rank < 8; rank++) {
+        for (let file = 0; file < 8; file++) {
+            ctx.fillRect(x, y, 125, 125)
+            if (file !== 7) {
+                ctx.fillStyle = curStyle === WHITE ? BLACK : WHITE
+                curStyle = ctx.fillStyle
             }
-            x = 0
-            y += 125
+            x += 125
+        }
+        x = 0
+        y += 125
+    }
+}
+
+const getIndicesFromCanvas = (evt: any) => {
+    const bounds = evt.target.getBoundingClientRect()
+
+    const x = Math.round(evt.clientX - bounds.x)
+    const y = Math.round(evt.clientY - bounds.y)
+
+    const gameX = Math.floor(x / 125)
+    const gameY = Math.floor(y / 125)
+
+    return { gameX, gameY }
+}
+
+const getAlgFromIndices = (rank: number, file: number) => {
+    const r = (8 - rank).toString()
+    const f = String.fromCharCode(file + 97)
+
+    return `${f}${r}`
+}
+
+const getRankFromAlg = (alg: string) => {
+    const code = alg.charCodeAt(0)
+    return code - 97
+}
+
+const getFileFromAlg = (alg: string) => {
+    return 8 - parseInt(alg.charAt(1))
+}
+
+const getInitialPieces = (board: number[][]) => {
+    // Need to append redraw to each square, state which changes so we don't reload each piece every render
+    let initialPieces: Square[][] = [[], [], [], [], [], [], [], []]
+    for (let rank = 0; rank < 8; rank++) {
+        for (let file = 0; file < 8; file++) {
+            initialPieces[rank][file] = { value: board[rank][file], redraw: false }
         }
     }
+    return initialPieces
+}
 
-    const clickListener = (evt: any) => {
-        console.log('onclick', pieceMoving)
+// @ts-ignore
+const Board = ({ board }) => {
+    const [pieceMoving, setPieceMoving] = useState<PieceMoving>({
+        value: 0,
+    })
+
+    // const [legalMoves, setLegalMoves] = useState<string[]>([])
+    const [pieces, setPieces] = useState<Square[][]>(getInitialPieces(board.board))
+    const [playerInfo, setPlayerInfo] = useState({ white: true, analysis: false, engineLoading: false})
+    const [drawContext, setDrawContext] = useState<CanvasRenderingContext2D | null>(null)
+
+
+    const clickListener = async (evt: any) => {
+        // dest
+        const { gameX, gameY } = getIndicesFromCanvas(evt)
+
         if (pieceMoving.value !== 0) {
-            console.log('moving piece nonzero')
-            // set back to zero
+            // send move to backend
+            // @ts-ignore
+            const src = getAlgFromIndices(pieceMoving.originalPos.rank, pieceMoving.originalPos?.file)
+            const dest = getAlgFromIndices(gameY, gameX)
 
-            // shouldn't this trigger a re-draw of pieces?
-            setPieces(Array(8).fill(Array(8).fill(pieceMoving.value)))
-            setPieceMoving({ value: 0, originalPos: null })
+            let moveResponse: any
+            try {
+                moveResponse = await makeMoveApi(board.games.id, `${src} ${dest}`)
+
+                console.log('succ')
+                console.log(moveResponse)
+            } catch (e) {
+                console.log('cant make move')
+                setPieceMoving({ value: 0 })
+                return
+            }
+
+
+            // What do we need from backend? have src and dest (last in history), just need piece value. can loop thru moveResopnse.changedSquares and update those
+            // map keys, convert to rank and file
+            const changedSquareIndices = Object.keys(moveResponse.changedSquares)
+                .map((square) => ({ rank: getRankFromAlg(square), file: getFileFromAlg(square), value: moveResponse.changedSquares[square] }))
+            
+            console.log('have indices')
+            console.log(changedSquareIndices)
+
+
+            // deep copy
+            const newPieces: Square[][] = pieces.map(p1 => p1.map(p2 => p2))
+
+            // TODO BROKEN
+            changedSquareIndices.forEach((square) => {
+                newPieces[square.rank][square.file] = { value: square.value, redraw: true }
+                drawSquare(drawContext, square.rank, square.file)
+            })
+
+            // newPieces[gameY][gameX] = { value: pieceMoving.value, redraw: true}
+            // // @ts-expect-error (src)
+            // newPieces[pieceMoving.originalPos.rank][pieceMoving.originalPos.file] = { value: 0, redraw: true}
+
+            setPieces(newPieces)
+            // @ts-expect-error
+            // drawSquare(drawContext, pieceMoving.originalPos.rank, pieceMoving.originalPos.file)
+            // drawSquare(drawContext, gameY, gameX)
+            setPieceMoving({ value: 0 })
+
+            if (!playerInfo.analysis) {
+                // TODO get CPU move and draw to board, not based on other state
+                // but it just returns the updated game. we need to parse that and update local state here. can parse history and use current local state? no, setPieces async
+            }
+
+            return
         }
-        const bounds = evt.target.getBoundingClientRect()
-
-        const x = Math.round(evt.clientX - bounds.x)
-        const y = Math.round(evt.clientY - bounds.y)
-
-        // filter to find piece. can we do drag and drop WITHOUT a bunch of re-renders?
-        // how to know where piece is? need to set state? or just keep as board.board prop. maybe state later
-
-        const gameX = Math.floor(x / 125)
-        const gameY = Math.floor(y / 125)
 
         // FLIPPED x and y intentional
-        if (board.board[gameY][gameX] !== 0) {
-            // draw image where mouse is, set active moving piece in state
-            console.log('setting piece moving..') // TODO stop using board, start using pieces. eventually it'll be a full state update
+        // FIRST click in a move
+        if (pieces[gameY][gameX].value !== 0) {
             setPieceMoving({
-                value: board.board[gameY][gameX],
+                value: pieces[gameY][gameX].value,
                 originalPos: { rank: gameY, file: gameX },
             })
         }
     }
 
+    // TODO is useMemo right here?
+    useMemo(() => {
+        if (!drawContext) return
+        drawPieces(pieces, drawContext)
+    }, [pieces])
+
     useEffect(() => {
         const canvas = document.getElementById('boardCanvas')
-
-        // TODO move event listener outside of useEffect
-        // TODO why trigger twice on each click?
-        // TODO move this elsewhere
-        canvas.addEventListener('click', clickListener)
+        canvas?.addEventListener('click', clickListener)
 
         if (!(canvas instanceof HTMLCanvasElement)) {
             return
@@ -122,10 +217,6 @@ const Board = ({ board }) => {
 
         if (!ctx) return
 
-        // TODO memoize?
-        // drawPieces(ctx)
-
-        // TODO should we remove the event listener?
         return(() => {
             canvas.removeEventListener('click', clickListener)
         })
@@ -134,13 +225,14 @@ const Board = ({ board }) => {
 
     // Things to run on first render. initial board setup. then, only update one relevant image on pieceMoving
     useEffect(() => {
+        console.log('FIRST LOAD')
         const canvas = document.getElementById('boardCanvas')
-        const ctx: CanvasRenderingContext2D | null = canvas.getContext('2d')
+        const ctx: CanvasRenderingContext2D | null = canvas?.getContext('2d')
 
         if (!ctx) return
         setDrawContext(ctx)
         drawBoard(ctx)
-        drawPieces(ctx, pieces)
+        drawPieces(pieces, ctx, true)
     }, [])
 
     return (
