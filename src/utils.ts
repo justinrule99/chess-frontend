@@ -19,3 +19,30 @@ export const getImageMap = () => {
 
     return pieceToImage
 }
+
+export const getIndicesFromCanvas = (evt: any) => {
+    const bounds = evt.target.getBoundingClientRect()
+
+    const x = Math.round(evt.clientX - bounds.x)
+    const y = Math.round(evt.clientY - bounds.y)
+
+    const gameX = Math.floor(x / 125)
+    const gameY = Math.floor(y / 125)
+
+    return { gameX, gameY }
+}
+
+export const getAlgFromIndices = (rank: number, file: number) => {
+    const r = (8 - rank).toString()
+    const f = String.fromCharCode(file + 97)
+
+    return `${f}${r}`
+}
+
+export const getFileFromAlg = (alg: string) => {
+    return alg.charCodeAt(0) - 97
+}
+
+export const getRankFromAlg = (alg: string) => {
+    return 8 - parseInt(alg.charAt(1))
+}

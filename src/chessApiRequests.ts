@@ -1,5 +1,3 @@
-// TODO Api types
-
 
 export const createGameApi = async (user: number) => {
     const response = await fetch(`http://localhost:8080/v1/game/${user}`, {
@@ -10,13 +8,17 @@ export const createGameApi = async (user: number) => {
         throw new Error(`Error: ${response}`)
     }
 
-    return response.text()
+    return response.json()
 }
 
-export const makeMoveApi = async (gameId: number, move: string) => {
-    const makeMoveBody = {
-        gameId,
-        move
+// if no move, don't send in body
+export const makeMoveApi = async (gameId: number, move?: string) => {
+    let makeMoveBody: any = {
+        gameId
+    }
+
+    if (move) {
+        makeMoveBody.move = move
     }
 
     const response = await fetch(`http://localhost:8080/v1/game`, {
