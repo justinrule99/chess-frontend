@@ -1,21 +1,11 @@
 import {useEffect, useState, useMemo } from 'react'
 import { getImageMap, getRankFromAlg, getFileFromAlg, getAlgFromIndices, getIndicesFromCanvas } from "./utils.ts";
 import './Board.css'
-import {makeMoveApi} from "./chessApiRequests.ts";
+import {getLegalMoves, makeMoveApi} from "./chessApiRequests.ts";
 import {BarLoader} from "react-spinners";
+import {PieceMoving, Square} from "./apiTypes.ts";
 
-type Square = {
-    value: number,
-    redraw: boolean
-}
 
-type PieceMoving = {
-    value: number,
-    originalPos?: {
-        rank: number,
-        file: number
-    }
-}
 
 const BLACK = '#2e7d32'
 const WHITE = '#fff9c4'
@@ -80,8 +70,6 @@ const drawBoard = (ctx?: CanvasRenderingContext2D) => {
     }
 }
 
-
-
 const getUpdatedPieces = (moveResponse: any, pieces: any, drawContext: any) => {
     const changedSquareIndices = Object.keys(moveResponse.changedSquares)
         .map((square) => ({ rank: getRankFromAlg(square), file: getFileFromAlg(square), value: moveResponse.changedSquares[square] }))
@@ -114,27 +102,31 @@ const Board = ({ board }) => {
         value: 0,
     })
 
-    // const [legalMoves, setLegalMoves] = useState<string[]>([])
     const [pieces, setPieces] = useState<Square[][]>(getInitialPieces(board.board))
     const [playerInfo, setPlayerInfo] = useState({ white: true, analysis: false, engineLoading: false})
     const [drawContext, setDrawContext] = useState<CanvasRenderingContext2D | null>(null)
-
+    // const [legalMoves, setLegalMoves] = useState<string[]>([])
 
     const clickListener = async (evt: any) => {
         // dest
         const { gameX, gameY } = getIndicesFromCanvas(evt)
 
         if (pieceMoving.value !== 0) {
-            // send move to backend. if not legal, don't send?
-            const src = getAlgFromIndices(pieceMoving.originalPos!!.rank, pieceMoving.originalPos!!.file)
-            const dest = getAlgFromIndices(gameY, gameX)
+            const legalMoves = await getLegalMoves(board.games.id, pieces)
+
+            const src =  getAlgFromIndices(pieceMoving.originalPos!!.rank, pieceMoving.originalPos!!.file)
+            const dest =  getAlgFromIndices(gameY, gameX)
+
+            // If an illegal move was selected, don't make network request
+            if (!legalMoves.includes(`${src} ${dest}`)) {
+                setPieceMoving({ value: 0 })
+                return
+            }
 
             let moveResponse: any
             try {
                 moveResponse = await makeMoveApi(board.games.id, `${src} ${dest}`)
 
-                console.log('succ')
-                console.log(moveResponse)
             } catch (e) {
                 console.log('cant make move')
                 setPieceMoving({ value: 0 })
@@ -146,6 +138,7 @@ const Board = ({ board }) => {
             setPieces(newPieces)
             setPieceMoving({ value: 0 })
 
+            // Make a CPU move
             if (!playerInfo.analysis) {
                 console.log('making cpu move')
                 let cpuMoveResponse
@@ -169,16 +162,21 @@ const Board = ({ board }) => {
                 })
             }
 
+
+
             return
         }
 
         // FLIPPED x and y intentional
         // FIRST click in a move
         if (pieces[gameY][gameX].value !== 0) {
+            // Here, get legal moves and display. Should move response include legal moves?
             setPieceMoving({
                 value: pieces[gameY][gameX].value,
                 originalPos: { rank: gameY, file: gameX },
             })
+
+
         }
     }
 
@@ -191,7 +189,6 @@ const Board = ({ board }) => {
     // Things to run on first render and prop changes. initial board setup. then, only update one relevant image on pieceMoving
     useEffect(() => {
         // redraw everything on prop change
-        console.log('prop change LOAD')
         const canvas = document.getElementById('boardCanvas')
         // @ts-ignore
         const ctx: CanvasRenderingContext2D | null = canvas?.getContext('2d')

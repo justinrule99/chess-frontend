@@ -1,3 +1,4 @@
+import {Square} from "./apiTypes.ts";
 
 export const createGameApi = async (user: number) => {
     const response = await fetch(`http://localhost:8080/v1/game/${user}`, {
@@ -46,4 +47,32 @@ export const getGameApi = async (gameId: number): Promise<any> => {
     }
 
     return response.json()
+}
+
+// TODO Probably overkill
+const legalMoveCache = new Map<{ gameId: number, board: Square[][]}, string[]>()
+
+export const getLegalMoves = async (gameId: number, board: Square[][]): Promise<any> => {
+    if (!gameId) return null
+
+    const cachedResult = legalMoveCache.get({ gameId, board })
+    if (cachedResult) {
+        console.log('got cache')
+        return cachedResult
+    }
+
+    // TODO caching. keep last result in memory, don't call api if gameId same and 
+    const response = await fetch(`http://localhost:8080/v1/game/legal_moves/${gameId}`)
+
+    if (!response?.ok) {
+        throw new Error(`Error: ${response}`)
+    }
+
+    const { legalMoves } = await response.json()
+
+
+    legalMoveCache.set({ gameId, board }, legalMoves)
+
+    console.log(legalMoveCache)
+    return legalMoves
 }
