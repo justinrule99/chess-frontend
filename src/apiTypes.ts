@@ -5,6 +5,7 @@ export type GetGameResponse = {
     games: any
     evaluations?: any
     board?: any
+    history?: any
 }
 
 export type Square = {

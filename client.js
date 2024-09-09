@@ -62,6 +62,12 @@ const getPlayers = async () => {
     console.log(await response.text())
 }
 
+const makeMoves = async (gameId, numMoves) => {
+    for (let i = 0; i < numMoves; i++) {
+        await makeMoveApi(gameId)
+    }
+}
+
 const makeNewGames = async (numGames) => {
     // for num games call createGame with user 3
 
@@ -101,13 +107,8 @@ const createAndPlayMoves = async (numGames, numMoves) => {
 
 await createAndPlayMoves(1000, 8)
 
-// createUser('someuser').then(res => console.log(res))
 
 // Can we start a game between two engines? or first try same engine
 // This is just for one game
 // TODO parallelize this
-// for (let i = 0; i < 20; i++) {
-//     // make a move
-//     // this is inefficient - making a call to db for each move. can we make 10 moves and post at once?
-//     await makeMoveApi(game?.games.id)
-// }
+makeMoves(2230, 10)
