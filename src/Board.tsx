@@ -70,6 +70,20 @@ const drawBoard = (ctx?: CanvasRenderingContext2D) => {
     }
 }
 
+const checkForWin = (completedState: string, setHeaderText: any) => {
+    switch (completedState) {
+        case 'WHITE':
+            setHeaderText('WHITE WINS')
+            break
+        case 'BLACK':
+            setHeaderText('BLACK WINS')
+            break
+        case 'DRAW':
+            setHeaderText('IT\'S A DRAW')
+            break
+    }
+}
+
 const getUpdatedPieces = (moveResponse: any, pieces: any, drawContext: any) => {
     const changedSquareIndices = Object.keys(moveResponse.changedSquares)
         .map((square) => ({ rank: getRankFromAlg(square), file: getFileFromAlg(square), value: moveResponse.changedSquares[square] }))
@@ -104,8 +118,8 @@ const Board = ({ board }) => {
 
     const [pieces, setPieces] = useState<Square[][]>(getInitialPieces(board.board))
     const [playerInfo, setPlayerInfo] = useState({ white: true, analysis: false, engineLoading: false})
+    const [headerText, setHeaderText] = useState('')
     const [drawContext, setDrawContext] = useState<CanvasRenderingContext2D | null>(null)
-    // const [legalMoves, setLegalMoves] = useState<string[]>([])
 
     const clickListener = async (evt: any) => {
         // dest
@@ -114,11 +128,11 @@ const Board = ({ board }) => {
         if (pieceMoving.value !== 0) {
             const legalMoves = await getLegalMoves(board.games.id, pieces)
 
-            const src =  getAlgFromIndices(pieceMoving.originalPos!!.rank, pieceMoving.originalPos!!.file)
-            const dest =  getAlgFromIndices(gameY, gameX)
+            const src = getAlgFromIndices(pieceMoving.originalPos!!.rank, pieceMoving.originalPos!!.file)
+            const dest = getAlgFromIndices(gameY, gameX)
 
             // If an illegal move was selected, don't make network request
-            if (!legalMoves.includes(`${src} ${dest}`)) {
+            if (!legalMoves || !legalMoves.includes(`${src} ${dest}`)) {
                 setPieceMoving({ value: 0 })
                 return
             }
@@ -126,9 +140,9 @@ const Board = ({ board }) => {
             let moveResponse: any
             try {
                 moveResponse = await makeMoveApi(board.games.id, `${src} ${dest}`)
-
             } catch (e) {
                 console.log('cant make move')
+                console.log(e)
                 setPieceMoving({ value: 0 })
                 return
             }
@@ -138,7 +152,9 @@ const Board = ({ board }) => {
             setPieces(newPieces)
             setPieceMoving({ value: 0 })
 
-            // Make a CPU move
+            checkForWin(moveResponse.games.completedState, setHeaderText)
+
+            // Make a CPU move. Analysis means user has control of both sides
             if (!playerInfo.analysis) {
                 console.log('making cpu move')
                 let cpuMoveResponse
@@ -160,9 +176,9 @@ const Board = ({ board }) => {
                     ...playerInfo,
                     engineLoading: false
                 })
+
+                checkForWin(cpuMoveResponse.games.completedState, setHeaderText)
             }
-
-
 
             return
         }
@@ -175,8 +191,6 @@ const Board = ({ board }) => {
                 value: pieces[gameY][gameX].value,
                 originalPos: { rank: gameY, file: gameX },
             })
-
-
         }
     }
 
@@ -220,9 +234,11 @@ const Board = ({ board }) => {
 
     }, [pieceMoving])
 
+    // TODO fix barLoader, not showing up anymore
     return (
         <>
             {!playerInfo.engineLoading ? <div style={{height: "2px"}} /> : null}
+            {headerText ? <h1>{headerText}</h1> : null}
             <BarLoader
                 color={"#ffffff"}
                 loading={playerInfo.engineLoading}

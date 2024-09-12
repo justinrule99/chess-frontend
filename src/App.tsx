@@ -3,7 +3,7 @@ import './App.css'
 import Board from './Board.tsx'
 import { useState} from "react";
 import {GetGameResponse} from "./apiTypes.ts";
-// import Sidebar from "./Sidebar.tsx";
+import Sidebar from "./Sidebar.tsx";
 
 function App() {
   const [game, setGame] = useState<GetGameResponse | null>(null)
@@ -34,7 +34,7 @@ function App() {
           {!game && <h1>Play Chess</h1>}
           <div className="content">
               {game && <Board board={game} /> }
-              {/*{game && <Sidebar gameHistory={game.history} />}*/}
+              {game && <Sidebar game={game} />}
           </div>
           {!game &&
               <div className="card">

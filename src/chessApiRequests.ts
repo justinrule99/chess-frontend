@@ -37,6 +37,18 @@ export const makeMoveApi = async (gameId: number, move?: string) => {
     return response.json()
 }
 
+export const resignApi = async (gameId: number) => {
+    const response = await fetch(`http://localhost:8080/v1/game/resign/${gameId}`, {
+        method: 'PUT'
+    })
+
+    if (!response?.ok) {
+        throw new Error(`Error: ${response}`)
+    }
+
+    return response.json()
+}
+
 export const getGameApi = async (gameId: number): Promise<any> => {
     if (!gameId) return null
 
